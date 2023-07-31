@@ -1,11 +1,3 @@
-//+------------------------------------------------------------------+
-//|                                        Copyright 2023, mapapel78 |
-//|                                   raba.algotrading@instagram.com |
-//+------------------------------------------------------------------+
-#property copyright     "Copyright 2023, mapapel78"
-#property link          "raba.algotrading@instagram.com"     // Autors professional instagram
-#property strict
-
 // Include indicators to the expert compiled file.
 #define AllAveragesIndicator "Indicators\\AllAverages v4.9.ex4"
 #resource "\\" + AllAveragesIndicator
