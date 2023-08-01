@@ -1,13 +1,3 @@
-//+------------------------------------------------------------------+
-//|                                        Copyright 2023, mapapel78 |
-//|                                       linktr.ee/raba.algotrading |
-//+------------------------------------------------------------------+
-#property copyright     "Copyright 2023, mapapel78"
-#property link          "linktr.ee/raba.algotrading"     // Developer's professional profile
-#property version       "1.00"
-#property description   "This expert ..."
-#property strict
-
 // Libs.
 #include <AllAveragesEA.mqh>
 
