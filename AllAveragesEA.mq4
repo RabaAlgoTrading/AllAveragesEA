@@ -21,7 +21,6 @@ void OnTick()
          // Close last position if needed.
          if (InpTPMethod == TPCloseByOpositeSignal) {
             if (!CloseLastPosition()) LogIfAnyError();
-            Print("Opposite signal close sell");
          }
          
          // Exec buy if max simultaneous positions not reached.
@@ -36,7 +35,6 @@ void OnTick()
          // Close last position if needed.
          if (InpTPMethod == TPCloseByOpositeSignal) {
             if (!CloseLastPosition()) LogIfAnyError();
-            Print("Opposite signal close buy");
          }
          
          // Exec sell if max simultaneous positions not reached.
