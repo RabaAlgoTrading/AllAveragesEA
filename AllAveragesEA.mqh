@@ -1,5 +1,5 @@
 // Include indicators to the expert compiled file.
-#define AllAveragesIndicator "Indicators\\AllAverages v4.9.ex4"
+#define AllAveragesIndicator "Indicators\\AllAverages_v4_9.ex4"
 #resource "\\" + AllAveragesIndicator
 
 // Libs.
@@ -89,7 +89,7 @@ enum ENUM_SL_RISK_METHOD
 
 enum ENUM_SL_PLACEMENT
 {
-   SLAtMA,                 // At the fast moving average
+   SLAtMA,                 // At the fast MA (not working)
    SLAtLastHighLow,        // At last high-low (last x bars)
 };
 
@@ -112,13 +112,15 @@ input bool                 InpEnableTSL                  = true;                
 input ENUM_TP_METHOD       InpTPMethod                   = TPFixedBalancePerc;   // Take profit method
 input double               InpTPValue                    = 1;                    // Take profit value
 input int                  InpMaxSimultaneousPositions   = 1;                    // Max. simultaneous positions
+input int                  InpMaxSlippage                = 100;                  // Max. allowed slippage (points)
+input int                  InpMaxSpread                  = 25;                   // Max. allowed spread (points)
 
 sinput group "### EXPERT CONFIG ###"
 input int                  InpExpertMagic                = 54454564;             // Expert magic number
 
 // Globals.
 int lastNumberOfBars = 0;
-int maxSlippage = 100;
+int MAShift = 1;
 
 // Returns true if a new bar has been started, false if not.
 bool NewBar()
@@ -137,7 +139,7 @@ ulong Buy()
    double volume = CalcVolume(Ask, sl);
    double tp = CalcTakeProfit(OP_BUY, Ask, volume);
    
-   return OrderSend(_Symbol, OP_BUY, volume, Ask, maxSlippage, sl, tp, "", InpExpertMagic);
+   return OrderSend(_Symbol, OP_BUY, volume, Ask, InpMaxSlippage, sl, tp, "", InpExpertMagic);
 }
 
 // Places a sell position according to the inputs. Returns position ticket or -1 if any error.
@@ -147,23 +149,23 @@ ulong Sell()
    double volume = CalcVolume(Bid, sl);
    double tp = CalcTakeProfit(OP_SELL, Bid, volume);
 
-   return OrderSend(_Symbol, OP_SELL, volume, Bid, maxSlippage, sl, tp, "", InpExpertMagic);
+   return OrderSend(_Symbol, OP_SELL, volume, Bid, InpMaxSlippage, sl, tp, "", InpExpertMagic);
 }
 
 // Calculates and returns the stop loss price according to the inputs.
 double CalcStopLoss(ENUM_ORDER_TYPE pOrderType, double pOpenPrice)
 {
    double sl = 0;
-   
+   double lastHigh = iHigh(_Symbol, _Period, iHighest(_Symbol, _Period, MODE_HIGH, InpLastHighLowDistance, 0));
+   double lastLow = iLow(_Symbol, _Period, iLowest(_Symbol, _Period, MODE_LOW, InpLastHighLowDistance, 0));
+
    // Case set SL at fixed pips.
    if (InpSLPlacement == SLAtMA) {
-      if (pOrderType == OP_BUY && GetFastMAValue(1) < pOpenPrice) sl = GetFastMAValue(1) - InpSLMargin * _Point;
-      else if (pOrderType == OP_BUY && GetFastMAValue(1) >= pOpenPrice) sl = GetSlowMAValue(1) - InpSLMargin * _Point;     // Use slow MA is price is below fast MA.
-      else if (pOrderType == OP_SELL && GetFastMAValue(1) > pOpenPrice) sl = GetFastMAValue(1) + InpSLMargin * _Point;
-      else if (pOrderType == OP_SELL && GetFastMAValue(1) <= pOpenPrice) sl = GetSlowMAValue(1) + InpSLMargin * _Point;    // Use slow MA is price is above fast MA.
+      if (pOrderType == OP_BUY && GetFastMAValue(MAShift) < pOpenPrice) sl = GetFastMAValue(MAShift) - InpSLMargin * _Point;
+      else if (pOrderType == OP_BUY && GetFastMAValue(MAShift) >= pOpenPrice) sl = fmax(GetSlowMAValue(MAShift), lastLow) - InpSLMargin * _Point;     // Use nearest slowMA/lastLow if price is below fastMA.
+      else if (pOrderType == OP_SELL && GetFastMAValue(MAShift) > pOpenPrice) sl = GetFastMAValue(MAShift) + InpSLMargin * _Point;
+      else if (pOrderType == OP_SELL && GetFastMAValue(MAShift) <= pOpenPrice) sl = fmin(GetSlowMAValue(MAShift), lastHigh) + InpSLMargin * _Point;   // Use nearest slowMA/lastHigh if price is above fastMA.
    } else if (InpSLPlacement == SLAtLastHighLow) {
-      double lastHigh = iHigh(_Symbol, _Period, iHighest(_Symbol, _Period, MODE_HIGH, InpLastHighLowDistance, 0));
-      double lastLow = iLow(_Symbol, _Period, iLowest(_Symbol, _Period, MODE_LOW, InpLastHighLowDistance, 0));
       if (pOrderType == OP_BUY) sl = lastLow - InpSLMargin * _Point;
       else if (pOrderType == OP_SELL) sl = lastHigh + InpSLMargin * _Point;
    }
@@ -248,9 +250,9 @@ bool CloseLastPosition()
 {
    if (OrderSelect(OrdersTotal() - 1, SELECT_BY_POS)) {
       if (OrderType() == OP_BUY) {
-         return OrderClose(OrderTicket(), OrderLots(), Bid, maxSlippage, Blue);
+         return OrderClose(OrderTicket(), OrderLots(), Bid, InpMaxSlippage);
       } else if (OrderType() == OP_SELL) {
-         return OrderClose(OrderTicket(), OrderLots(), Ask, maxSlippage, Red);
+         return OrderClose(OrderTicket(), OrderLots(), Ask, InpMaxSlippage);
       }  
    } 
    return false;
@@ -264,13 +266,15 @@ void UpdateTrailingStops()
    
    // Init last high-low if required.
    if (InpSLPlacement == SLAtLastHighLow){
-      lastHigh = iHighest(_Symbol, _Period, MODE_HIGH, WHOLE_ARRAY, InpLastHighLowDistance);
-      lastLow = iLowest(_Symbol, _Period, MODE_LOW, WHOLE_ARRAY, InpLastHighLowDistance);
+      lastHigh = iHigh(_Symbol, _Period, iHighest(_Symbol, _Period, MODE_HIGH, InpLastHighLowDistance, 0));
+      lastLow = iLow(_Symbol, _Period, iLowest(_Symbol, _Period, MODE_LOW, InpLastHighLowDistance, 0));
+      ObjectDelete(ChartID(), "LastHighLowDistance");
+      ObjectCreate(ChartID(), "LastHighLowDistance", OBJ_VLINE, 0, iTime(_Symbol, _Period, InpLastHighLowDistance), 0);
    }
          
    // Loop all positions.
    for (int i = 0; i < OrdersTotal(); i++) {
-      
+
       // Skip if failed selecting.
       if (!OrderSelect(i, SELECT_BY_POS)) { 
          LogIfAnyError();
@@ -279,11 +283,13 @@ void UpdateTrailingStops()
       
       // Case set SL to last fastMA price.   
       if (InpSLPlacement == SLAtMA) {
-         if (OrderType() == OP_BUY && OrderStopLoss() < GetFastMAValue(1)) {
+         if (OrderType() == OP_BUY && OrderStopLoss() < GetFastMAValue(MAShift)) {
             if (!OrderModify(OrderTicket(), OrderOpenPrice(), NormalizeDouble(GetFastMAValue(1), _Digits), OrderTakeProfit(), 0)) LogIfAnyError();
-         } else if (OrderType() == OP_SELL && OrderStopLoss() > GetFastMAValue(1)) {
+            Print("TSL executed 1");
+         } else if (OrderType() == OP_SELL && OrderStopLoss() > GetFastMAValue(MAShift)) {
             if (!OrderModify(OrderTicket(), OrderOpenPrice(), NormalizeDouble(GetFastMAValue(1), _Digits), OrderTakeProfit(), 0)) LogIfAnyError();
-         }
+            Print("TSL executed 2");
+         }         
                
       // Case set SL to the last high-low.
       } else if (InpSLPlacement == SLAtLastHighLow) {     
